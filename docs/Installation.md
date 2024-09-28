@@ -16,11 +16,11 @@ If run as root, the executable path should be:
 
 Verify the executable works correctly on your system:
 
-	./wordfence --version
+	./wordfence version
 
 You should see output similar to this:
 
-	Wordfence CLI 2.0.1
+	Wordfence CLI 3.0.1
 
 Once this is done, we recommend [reviewing the configuration](Configuration.md) to go through configuring a license followed by [running your first scan](malware-scan/Examples.md).
 
@@ -41,7 +41,33 @@ Verify the executable works correctly on your system:
 
 You should see output similar to this:
 
-	Wordfence CLI 2.0.1
+	Wordfence CLI 3.0.1
+
+Once this is done, we recommend [reviewing the configuration](Configuration.md) to go through configuring a license followed by [running your first scan](malware-scan/Examples.md).
+
+## Install the RPM package
+
+This method will work for Red Hat Enterprise Linux 9 and compatible distributions (AlmaLinux, Rocky Linux, etc) where you have root access to the system. You must have the CodeReady Linux Builder (CRB) repo enabled before installing.
+
+On RHEL, run:
+
+	subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+
+On RHEL-compatible distributions, run:
+
+	dnf config-manager --set-enabled crb
+
+You should now be able to install the RPM package:
+
+	sudo dnf install ./wordfence-el9.rpm
+
+Verify the executable works correctly on your system:
+
+	wordfence version
+
+You should see output similar to this:
+
+	Wordfence CLI 3.0.1
 
 Once this is done, we recommend [reviewing the configuration](Configuration.md) to go through configuring a license followed by [running your first scan](malware-scan/Examples.md).
 
@@ -61,11 +87,11 @@ Extract the binary:
 
 Verify the binary works correctly on your system:
 
-	./wordfence --version
+	./wordfence version
 
 You should see output similar to this:
 
-	Wordfence CLI 2.0.1
+	Wordfence CLI 3.0.1
 
 Once this is done, we recommend [reviewing the configuration](Configuration.md) to go through configuring a license followed by [running your first scan](malware-scan/Examples.md).
 
@@ -79,11 +105,11 @@ To install Wordfence CLI using Docker, you can clone the GitHub repo to your loc
 
 Once the Docker image is built, you can start the docker container with the volumes you wish to scan:
 
-	docker run -v /var/www:/var/www wordfence-cli:latest scan --version
+	docker run -v /var/www:/var/www wordfence-cli:latest version
 
 You should see output similar to this:
 
-	Wordfence CLI 2.0.1
+	Wordfence CLI 3.0.1
 
 Once this is done, we recommend [reviewing the configuration](Configuration.md) to go through configuring a license followed by [running your first scan](malware-scan/Examples.md).
 
@@ -94,7 +120,7 @@ To install Wordfence CLI manually, you can clone the GitHub repo to your local e
 	git clone git@github.com:wordfence/wordfence-cli.git
 	cd ./wordfence-cli
 	pip install .
-	python main.py scan --version
+	python main.py version
 
 You can additionally build the wheel archive and generate an executable:
 	

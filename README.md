@@ -15,7 +15,7 @@ If you'd like to install Wordfence CLI manually or use CLI for development, you 
 	git clone git@github.com:wordfence/wordfence-cli.git
 	cd ./wordfence-cli
 	pip install .
-	python main.py --version
+	python main.py version
 
 ### Requirements
 
@@ -56,3 +56,7 @@ The full documentation for Wordfence CLI can be found [here](docs/) which includ
 ## License
 
 Wordfence CLI is open source, licensed under GPLv3. The license can be found [here](LICENSE).
+
+## Contributing
+
+See [our contribution guidelines](CONTRIBUTING.md).

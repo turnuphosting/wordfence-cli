@@ -7,8 +7,7 @@ config_definitions: ConfigDefinitions = {
     "read-stdin": {
         "description": "Read WordPress base paths from stdin. If not specified"
                        ", paths will automatically be read from stdin when "
-                       "input is not from a TTY. Specify --no-read-stdin to "
-                       "disable.",
+                       "input is not from a TTY.",
         "context": "ALL",
         "argument_type": "OPTIONAL_FLAG",
         "default": None
@@ -30,7 +29,8 @@ config_definitions: ConfigDefinitions = {
         "argument_type": "OPTION_REPEATABLE",
         "default": [],
         "meta": {
-            "separator": ","
+            "separator": ",",
+            "accepts_directory": True
         }
     },
     "plugin-directory": {
@@ -41,7 +41,8 @@ config_definitions: ConfigDefinitions = {
         "argument_type": "OPTION_REPEATABLE",
         "default": [],
         "meta": {
-            "separator": ","
+            "separator": ",",
+            "accepts_directory": True
         }
     },
     "theme-directory": {
@@ -52,7 +53,8 @@ config_definitions: ConfigDefinitions = {
         "argument_type": "OPTION_REPEATABLE",
         "default": [],
         "meta": {
-            "separator": ","
+            "separator": ",",
+            "accepts_directory": True
         }
     },
     "relative-content-path": {
@@ -79,7 +81,7 @@ config_definitions: ConfigDefinitions = {
     },
     "relative-mu-plugins-path": {
         "short_name": "M",
-        "description": "Alternate path of the wp-content/plugins directory "
+        "description": "Alternate path of the wp-content/mu-plugins directory "
                        "relative to the WordPress root.",
         "context": "ALL",
         "argument_type": "OPTION_REPEATABLE",
@@ -113,8 +115,8 @@ config_definitions: ConfigDefinitions = {
     },
     "informational": {
         "short_name": "I",
-        "description": "Whether or not to include informational "
-                       "vulnerability records in results.",
+        "description": "Include informational vulnerability records in "
+                       "results.",
         "context": "ALL",
         "argument_type": "FLAG",
         "default": False
@@ -143,6 +145,23 @@ config_definitions: ConfigDefinitions = {
         "context": "CLI",
         "argument_type": "OPTIONAL_FLAG",
         "default": None
+    },
+    "allow-nested": {
+        "description": "When enabled (the default), WordPress installations "
+                       "nested below other installations will also be "
+                       "scanned for vulnerabilities.",
+        "context": "ALL",
+        "argument_type": "FLAG",
+        "default": True
+    },
+    "allow-io-errors": {
+        "description": "Allow scanning to continue if IO errors are "
+                       "encountered. Sites that cannot be processed "
+                       "due to IO errors will be skipped and a warning will "
+                       "be logged. This is the default behavior.",
+        "context": "ALL",
+        "argument_type": "FLAG",
+        "default": True
     }
 }
 
@@ -180,5 +199,6 @@ definition = SubcommandDefinition(
     config_definitions=config_definitions,
     config_section='VULN_SCAN',
     cacheable_types=cacheable_types,
-    examples=examples
+    examples=examples,
+    accepts_directories=True
 )

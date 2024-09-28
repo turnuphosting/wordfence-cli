@@ -12,8 +12,11 @@ VALID_SUBCOMMANDS = {
         'configure',
         'malware-scan',
         'vuln-scan',
+        'remediate',
+        'count-sites',
         'help',
-        'version'
+        'version',
+        'terms'
     }
 
 
@@ -43,6 +46,10 @@ class Subcommand:
         self.config = context.config
         self.cache = context.cache
         self.helper = context.helper
+        self.prepare()
+
+    def prepare(self) -> None:
+        pass
 
     def invoke(self) -> int:
         return 0
@@ -72,7 +79,11 @@ class SubcommandDefinition:
                 cacheable_types: Set[str],
                 requires_config: bool = True,
                 previous_names: Set[str] = None,
-                examples: List[UsageExample] = None
+                examples: List[UsageExample] = None,
+                uses_license: bool = False,
+                accepts_files: bool = False,
+                accepts_directories: bool = False,
+                long_description: Optional[str] = None
             ):
         self.name = name
         self.usage = usage
@@ -85,6 +96,10 @@ class SubcommandDefinition:
         self.previous_names = previous_names if previous_names is not None \
             else set()
         self.examples = examples
+        self.uses_license = uses_license
+        self.accepts_files = accepts_files
+        self.accepts_directories = accepts_directories
+        self.long_description = long_description
 
     def get_config_map(self) -> Dict[str, ConfigItemDefinition]:
         if self.config_map is None:
@@ -95,6 +110,9 @@ class SubcommandDefinition:
 
     def accepts_option(self, name: str) -> bool:
         return name in self.config_definitions
+
+    def accepts_paths(self) -> bool:
+        return self.accepts_files or self.accepts_directories
 
     def initialize_subcommand(self, context: CliContext) -> Subcommand:
         module = import_subcommand_module(self.name)

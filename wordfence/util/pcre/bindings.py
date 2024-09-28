@@ -1,38 +1,32 @@
-from ctypes import cdll, c_char_p, c_void_p, c_int, c_ulong, c_ubyte, byref, \
+from ctypes import c_char_p, c_void_p, c_int, c_ulong, c_ubyte, byref, \
         Structure, POINTER, CFUNCTYPE
-from ctypes.util import find_library
 from enum import IntEnum
 from typing import Optional
 
+from ..library import load_library, LibraryNotAvailableException
+from ..encoding import bytes_to_str
 
-class PcreException(Exception):
-    pass
+from .pcre import PcreException, PcreLibraryNotAvailableException, \
+    PcreOptions, \
+    PCRE_DEFAULT_OPTIONS
 
-
-class PcreLibraryNotAvailableException(PcreException):
-    pass
-
-
-library_name = find_library('pcre')
-if library_name is None:
-    raise PcreLibraryNotAvailableException('Failed to locate libpcre')
 try:
-    pcre = cdll.LoadLibrary(library_name)
-except OSError as e:
-    raise PcreLibraryNotAvailableException('Failed to load libpcre') from e
+    pcre = load_library('pcre')
+except LibraryNotAvailableException:
+    raise PcreLibraryNotAvailableException('Failed to load libpcre')
 
 
 _pcre_version = pcre.pcre_version
 _pcre_version.argtypes = []
 _pcre_version.restype = c_char_p
-VERSION = _pcre_version().decode('ascii')
+VERSION = bytes_to_str(_pcre_version())
 
 
 class PcreError(IntEnum):
     NOMATCH = -1
     NULL = -2
     BADOPTION = -3
-    BADMAGIN = -4
+    BADMAGIC = -4
     UNKNOWN_OPCODE = -5
     NOMEMORY = -6
     NOSUBSTRING = -7
@@ -174,13 +168,10 @@ PCRE_EXTRA_MATCH_LIMIT = 0x0012
 PCRE_EXTRA_MATCH_LIMIT_RECURSION = 0x0010
 PCRE_STUDY_JIT_COMPILE = 0x0001
 PCRE_STUDY_EXTRA_NEEDED = 0x0008
-PCRE_CASELESS = 0x00000001
 
 
 PCRE_JIT_STACK_MIN_SIZE = 32 * 1024
 PCRE_JIT_STACK_MAX_SIZE = 64 * 1024
-PCRE_DEFAULT_MATCH_LIMIT = 1000000
-PCRE_DEFAULT_MATCH_LIMIT_RECURSION = 100000
 
 
 class PcreJitStack:
@@ -225,31 +216,6 @@ class PcreMatch:
 
     def __init__(self, matched_string: bytes):
         self.matched_string = matched_string
-
-
-class PcreOptions:
-
-    def __init__(
-                self,
-                caseless: bool = False,
-                match_limit: int = PCRE_DEFAULT_MATCH_LIMIT,
-                match_limit_recursion: int = PCRE_DEFAULT_MATCH_LIMIT_RECURSION
-            ):
-        self.caseless = caseless
-        self.match_limit = match_limit
-        self.match_limit_recursion = match_limit_recursion
-        self._compilation_options = None
-
-    def _get_compilation_options(self) -> c_int:
-        if self._compilation_options is None:
-            options = 0
-            if self.caseless:
-                options |= PCRE_CASELESS
-            self._compilation_options = c_int(options)
-        return self._compilation_options
-
-
-PCRE_DEFAULT_OPTIONS = PcreOptions()
 
 
 class PcrePattern:
@@ -354,10 +320,10 @@ class PcrePattern:
             return PcreMatch(matched_string)
 
     def _free(self) -> None:
-        if self.extra is not None:
+        if self.extra is not None and _pcre_free_study is not None:
             _pcre_free_study(self.extra)
             self.extra = None
-        if self.compiled is not None:
+        if self.compiled is not None and _pcre_free is not None:
             _pcre_free(self.compiled)
             self.compiled = None
 

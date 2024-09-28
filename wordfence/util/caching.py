@@ -3,7 +3,7 @@ import pickle
 import base64
 import time
 import shutil
-from typing import Any, Callable, Optional, Set
+from typing import Any, Callable, Optional, Set, Iterable
 
 from .io import FileLock, LockType
 from .serialization import limited_deserialize
@@ -23,6 +23,9 @@ class NoCachedValueException(CacheException):
 
 class InvalidCachedValueException(CacheException):
     pass
+
+
+CacheFilter = Callable[[Any], Any]
 
 
 class Cache:
@@ -45,20 +48,36 @@ class Cache:
     def put(self, key: str, value) -> None:
         self._save(key, self._serialize_value(value))
 
-    def get(self, key: str, max_age: Optional[int] = None) -> Any:
+    def get(
+                self,
+                key: str,
+                max_age: Optional[int] = None,
+                additional_filters: Optional[Iterable[CacheFilter]] = None
+            ) -> Any:
         return self.filter_value(
-                self._deserialize_value(self._load(key, max_age))
+                self._deserialize_value(self._load(key, max_age)),
+                additional_filters
             )
+
+    def remove(self, key: str) -> None:
+        raise NotImplementedError('Removing is not implemented for this cache')
 
     def purge(self) -> None:
         pass
 
-    def add_filter(self, filter: Callable[[Any], Any]) -> None:
+    def add_filter(self, filter: CacheFilter) -> None:
         self.filters.append(filter)
 
-    def filter_value(self, value: Any) -> Any:
+    def filter_value(
+                self,
+                value: Any,
+                additional_filters: Optional[Iterable[CacheFilter]] = None
+            ) -> Any:
         for filter in self.filters:
             value = filter(value)
+        if additional_filters is not None:
+            for filter in additional_filters:
+                value = filter(value)
         return value
 
 
@@ -76,13 +95,20 @@ class RuntimeCache(Cache):
             return self.items[key]
         raise NoCachedValueException()
 
+    def remove(self, key: str) -> None:
+        try:
+            del self.items[key]
+        except KeyError:
+            # The item already does not exist
+            pass
+
     def purge(self) -> None:
         self.items = {}
 
 
 class CacheDirectory(Cache):
 
-    def __init__(self, path: str, allowed: Optional[Set[str]] = None):
+    def __init__(self, path: bytes, allowed: Optional[Set[str]] = None):
         super().__init__()
         self.path = path
         self.allowed = allowed
@@ -102,10 +128,10 @@ class CacheDirectory(Cache):
     def _deserialize_value(self, value: Any) -> Any:
         return limited_deserialize(value, self.allowed)
 
-    def _get_path(self, key: str) -> str:
+    def _get_path(self, key: str) -> bytes:
         return os.path.join(
                 self.path,
-                base64.b16encode(key.encode('utf-8')).decode('utf-8')
+                os.fsencode(base64.b16encode(key.encode('utf-8')))
             )
 
     def _save(self, key: str, value: Any) -> None:
@@ -139,10 +165,16 @@ class CacheDirectory(Cache):
                     )
             raise NoCachedValueException() from e
 
+    def remove(self, key: str) -> None:
+        path = self._get_path(key)
+        with open(path, 'wb') as file:
+            with FileLock(file, LockType.EXCLUSIVE):
+                os.remove(path)
+
     def purge(self) -> None:
         try:
             shutil.rmtree(self.path)
-        except BaseException as e:
+        except BaseException as e:  # noqa: B036
             raise CacheException('Failed to delete cache directory') from e
         self._initialize_directory()
 
@@ -153,22 +185,30 @@ class Cacheable:
                 self,
                 key: str,
                 initializer: Callable[[], Any],
-                max_age: Optional[int] = None
+                max_age: Optional[int] = None,
+                filters: Optional[Iterable[CacheFilter]] = None
             ):
         self.key = key
         self._initializer = initializer
         self.max_age = max_age
+        self.filters = filters
 
     def _initialize_value(self) -> Any:
         return self._initializer()
 
     def get(self, cache: Cache) -> Any:
         try:
-            value = cache.get(self.key, self.max_age)
+            value = cache.get(self.key, self.max_age, self.filters)
         except (
                 NoCachedValueException,
                 InvalidCachedValueException
                 ):
             value = self._initialize_value()
-            cache.put(self.key, value)
+            self.set(cache, value)
         return value
+
+    def set(self, cache: Cache, value: Any) -> None:
+        cache.put(self.key, value)
+
+    def delete(self, cache: Cache) -> Any:
+        cache.remove(self.key)

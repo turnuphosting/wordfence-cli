@@ -54,6 +54,11 @@ class ConfigItemMeta:
     multiple: Optional[bool] = None
     separator: Optional[str] = None
     value_type: Union[Type, Callable] = str
+    accepts_file: bool = False
+    accepts_directory: bool = False
+
+    def accepts_paths(self) -> bool:
+        return self.accepts_file or self.accepts_directory
 
 
 @dataclass(frozen=True)
@@ -84,15 +89,25 @@ class ConfigItemDefinition:
         return self.argument_type == ArgumentType.FLAG \
             or self.argument_type == ArgumentType.OPTIONAL_FLAG
 
+    def accepts_value(self) -> bool:
+        return not self.is_flag()
+
     def get_value_type(self):
+        if self.is_flag():
+            return bool
         if not self.meta:
-            return str if not self.is_flag() else bool
+            return str
         return_type = self.meta.value_type
         if not return_type:
+            if self.meta.accepts_paths():
+                return bytes
             raise ValueError(
                 f"Specified type not in the allow list: {self.meta.value_type}"
                 )
         return return_type
+
+    def accepts_paths(self) -> bool:
+        return self.meta and self.meta.accepts_paths()
 
     @classmethod
     def from_dict(cls, source: dict):
@@ -138,6 +153,8 @@ class ConfigItemDefinition:
                                                    not_set_token) and is_flag:
                 source['meta']['value_type'] = 'bool'
             source['meta'] = ConfigItemMeta(**source['meta'])
+        else:
+            source['meta'] = ConfigItemMeta()
 
         # sanity check
         if is_flag and not (
@@ -181,6 +198,10 @@ class CanonicalValueExtractorInterface(metaclass=abc.ABCMeta):
                             source: Any) -> Any:
         """Return the canonical configuration value as stored in the
         configuration source"""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_context(self) -> Context:
         raise NotImplementedError
 
 

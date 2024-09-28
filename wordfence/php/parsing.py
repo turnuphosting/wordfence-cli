@@ -3,12 +3,14 @@ from typing import IO, List, Optional, Any, Callable, Dict, Set
 from enum import Enum
 from collections import deque
 
+from ..util.encoding import str_to_bytes
+
 from .lexing import Lexer, Token, TokenType, CharacterType, STRING_ESCAPE
 
 
 class SourceMetadata:
 
-    def __init__(self, path: str):
+    def __init__(self, path: bytes):
         self.path = path
 
 
@@ -43,11 +45,17 @@ class PhpStateType:
     pass
 
 
+def make_strings_binary(value: Any) -> Any:
+    if isinstance(value, str):
+        return str_to_bytes(value)
+    return value
+
+
 class PhpType(Enum):
-    STRING = str,
+    STRING = bytes,
     INTEGER = int,
     ARRAY = List,
-    NULL = None
+    NULL = type(None)
 
     def is_valid_value(self, value: Any) -> bool:
         return value is self.value or isinstance(value, self.value)
@@ -55,16 +63,19 @@ class PhpType(Enum):
     def validate(self, value: Any) -> None:
         if not self.is_valid_value(value):
             raise EvaluationException(
-                    f'Value {value} is not valid for type {self.name}'
+                    'Value ' + repr(value) +
+                    f' is not valid for type {self.name} ({self.value})'
                 )
 
     @classmethod
     def for_python_value(cls, value: Any):
+        value = make_strings_binary(value)
         for type in cls:
             if type.is_valid_value(value):
                 return type
         raise ImplementationException(
-                'Python type does not have a corresponding PHP type'
+                'Python value does not have a corresponding PHP type: '
+                + repr(value)
             )
 
 
@@ -81,6 +92,7 @@ class PhpValue:
 
     @classmethod
     def for_python_value(cls, value: Any):
+        value = make_strings_binary(value)
         type = PhpType.for_python_value(value)
         return cls(
                 type,
@@ -102,7 +114,7 @@ class PhpName:
 
     def __init__(
                 self,
-                components: List[str],
+                components: List[bytes],
                 base=None
             ):
         self.components = components
@@ -114,16 +126,16 @@ class PhpEntity:
     def __init__(self):
         self.comments = []
 
-    def attach_comment(self, comment: str) -> None:
+    def attach_comment(self, comment: bytes) -> None:
         self.comments.append(comment)
 
-    def attach_comments(self, comments: List[str]) -> None:
+    def attach_comments(self, comments: List[bytes]) -> None:
         self.comments.extend(comments)
 
 
 class PhpIdentifiedEntity(PhpEntity):
 
-    def __init__(self, name: str):
+    def __init__(self, name: bytes):
         super().__init__()
         self.name = name
 
@@ -135,7 +147,7 @@ class PhpVariable(PhpIdentifiedEntity):
 
     def __init__(
                 self,
-                name: str,
+                name: bytes,
                 value: PhpValue,
             ):
         super().__init__(name)
@@ -192,10 +204,10 @@ class PhpFunction(PhpEntity, Evaluable):
         return self.instruction_group.evaluate(state)
 
 
-class PhpVisibility(str, Enum):
-    PRIVATE = 'private'
-    PROTECTED = 'protected'
-    PUBLIC = 'public'
+class PhpVisibility(bytes, Enum):
+    PRIVATE = b'private'
+    PROTECTED = b'protected'
+    PUBLIC = b'public'
 
     @classmethod
     def for_token_type(cls, token_type: TokenType):
@@ -209,11 +221,11 @@ class PhpVisibility(str, Enum):
             return None
 
 
-class PhpModifier(str, Enum):
-    ABSTRACT = 'abstract'
-    STATIC = 'static'
-    FINAL = 'final'
-    READONLY = 'readonly'
+class PhpModifier(bytes, Enum):
+    ABSTRACT = b'abstract'
+    STATIC = b'static'
+    FINAL = b'final'
+    READONLY = b'readonly'
 
     @classmethod
     def for_token_type(cls, token_type: TokenType):
@@ -243,7 +255,7 @@ class PhpClassMember(PhpEntity, Evaluable):
 
     def __init__(
                 self,
-                name: str,
+                name: bytes,
                 modifier_group: Optional[PhpModifierGroup] = None
             ):
         self.name = name
@@ -262,7 +274,7 @@ class PhpMethod(PhpClassMember):
 
     def __init__(
                 self,
-                name: str,
+                name: bytes,
                 function: PhpFunction,
                 modifier_group: Optional[PhpModifierGroup] = None
             ):
@@ -278,8 +290,8 @@ class PhpClassConstant(PhpEntity, Evaluable):
 
     def __init__(
                 self,
-                class_name: str,
-                constant_name: str
+                class_name: bytes,
+                constant_name: bytes
             ):
         self.class_name = class_name
         self.constant_name = constant_name
@@ -298,7 +310,7 @@ class PhpClass(PhpIdentifiedEntity):
 
     def __init__(
                 self,
-                name: str,
+                name: bytes,
                 modifier_group: PhpModifierGroup
             ):
         super().__init__(name)
@@ -313,7 +325,7 @@ class PhpClass(PhpIdentifiedEntity):
     def add_method(self, method: PhpMethod) -> None:
         self.methods[method.name] = method
 
-    def get_method(self, name: str) -> Optional[PhpMethod]:
+    def get_method(self, name: bytes) -> Optional[PhpMethod]:
         try:
             return self.methods[name]
         except KeyError:
@@ -322,7 +334,7 @@ class PhpClass(PhpIdentifiedEntity):
     def add_constant(self, constant: PhpClassConstant) -> None:
         self.constants[constant.constant_name] = constant
 
-    def get_constant(self, name: str) -> Optional[PhpClassConstant]:
+    def get_constant(self, name: bytes) -> Optional[PhpClassConstant]:
         try:
             return self.constants[name]
         except KeyError:
@@ -333,16 +345,16 @@ class PhpDefinitions:
 
     def __init__(
                 self,
-                base_functions: Dict[str, Callable] = None,
-                base_classes: Dict[str, PhpClass] = None
+                base_functions: Dict[bytes, Callable] = None,
+                base_classes: Dict[bytes, PhpClass] = None
             ):
         self.functions = base_functions.copy()
         self.classes = base_classes.copy()
 
-    def define_function(self, name: str, callable: Callable) -> None:
+    def define_function(self, name: bytes, callable: Callable) -> None:
         self.functions[name] = callable
 
-    def get_function(self, name: str) -> Optional[Callable]:
+    def get_function(self, name: bytes) -> Optional[Callable]:
         try:
             return self.functions[name]
         except KeyError:
@@ -351,7 +363,7 @@ class PhpDefinitions:
     def define_class(self, definition: PhpClass) -> None:
         self.classes[definition.name] = definition
 
-    def get_class(self, name: str) -> Optional[PhpClass]:
+    def get_class(self, name: bytes) -> Optional[PhpClass]:
         try:
             return self.classes[name]
         except KeyError:
@@ -363,7 +375,7 @@ class PhpScope:
     def __init__(self):
         self.variables = {}
 
-    def get_variable(self, name: str) -> PhpVariable:
+    def get_variable(self, name: bytes) -> PhpVariable:
         try:
             return self.variables[name]
         except KeyError:
@@ -400,14 +412,14 @@ class PhpState(PhpStateType):
         self.options = options if options is not None \
             else PhpEvaluationOptions()
 
-    def define_constant(self, name: str, value: Any) -> None:
+    def define_constant(self, name: bytes, value: Any) -> None:
         if name in self.constants:
             raise EvaluationException(f'Constant {name} is already defined')
         self.constants[name] = value
 
     def get_constant(
                 self,
-                name: str,
+                name: bytes,
                 default_to_name: bool = True
             ) -> PhpValue:
         try:
@@ -419,18 +431,18 @@ class PhpState(PhpStateType):
 
     def get_constant_value(
                 self,
-                name: str,
+                name: bytes,
                 default_to_name: bool = True
             ) -> PhpValue:
         return self.get_constant(name, default_to_name).value
 
-    def get_variable(self, name: str) -> PhpVariable:
+    def get_variable(self, name: bytes) -> PhpVariable:
         return self.scope.get_variable(name)
 
-    def get_variable_value(self, name: str) -> Any:
+    def get_variable_value(self, name: bytes) -> Any:
         return self.get_variable(name).value.value
 
-    def write_output(self, output: str) -> None:
+    def write_output(self, output: bytes) -> None:
         self.output.append(output)
 
 
@@ -443,13 +455,15 @@ def php_defined(state: PhpState, constant: PhpValue) -> PhpValue:
 
 
 def php_dirname(state: PhpState, path: PhpValue) -> PhpValue:
-    return PhpValue.for_python_value(os.path.dirname(path.value))
+    return PhpValue.for_python_value(
+            os.fsencode(os.path.dirname(path.value))
+        )
 
 
 BASE_FUNCTIONS = {
-        'define': php_define,
-        'defined': php_defined,
-        'dirname': php_dirname
+        b'define': php_define,
+        b'defined': php_defined,
+        b'dirname': php_dirname
     }
 BASE_CLASSES = {
     }
@@ -479,7 +493,7 @@ class PhpUnaryOperator(PhpOperator):
 
     def __init__(
                 self,
-                operator: str,
+                operator: bytes,
                 callable: Callable[[Any], Any]
             ):
         self.operator = operator
@@ -490,7 +504,7 @@ class PhpUnaryOperator(PhpOperator):
 
 
 def _register_unary_operator(
-            operator: str,
+            operator: bytes,
             callable: Callable[[Any], Any]
         ) -> None:
     instance = PhpUnaryOperator(operator, callable)
@@ -498,7 +512,7 @@ def _register_unary_operator(
 
 
 _register_unary_operator(
-        '!',
+        b'!',
         lambda value: PhpValue(value.type, not value.value)
     )
 
@@ -507,7 +521,7 @@ class PhpBinaryOperator(PhpOperator):
 
     def __init__(
                 self,
-                operator: str,
+                operator: bytes,
                 callable: Callable[[Any, Any], Any]
             ):
         super().__init__()
@@ -519,7 +533,7 @@ class PhpBinaryOperator(PhpOperator):
 
 
 def _register_binary_operator(
-            operator: str,
+            operator: bytes,
             callable: Callable[[Any, Any], Any]
         ):
     operator_instance = PhpBinaryOperator(operator, callable)
@@ -527,48 +541,48 @@ def _register_binary_operator(
 
 
 _register_binary_operator(
-        '.',
+        b'.',
         lambda left, right: PhpValue(left.type, left.value + right.value)
     )
 _register_binary_operator(
-        '===',
+        b'===',
         lambda left, right: left.type is right.type and
         left.value == right.value
     )
 _register_binary_operator(
-        '!==',
+        b'!==',
         lambda left, right: left.type is not right.type or
         left.value != right.value
     )
 _register_binary_operator(
-        '==',
+        b'==',
         lambda left, right: left.value == right.value
     )
 _register_binary_operator(
-        '!=',
+        b'!=',
         lambda left, right: left.value != right.value
     )
 _register_binary_operator(
-        '=',
+        b'=',
         lambda left, right: left.assign(right)
     )
 _register_binary_operator(
-        '>=',
+        b'>=',
         lambda left, right: left.value >= right.value
     )
 _register_binary_operator(
-        '&&',
+        b'&&',
         lambda left, right: left.value and right.value
     )
 _register_binary_operator(
-        '||',
+        b'||',
         lambda left, right: left.value or right.value
     )
 
 
 class PhpOutput(PhpInstruction):
 
-    def __init__(self, content: str):
+    def __init__(self, content: bytes):
         super().__init__()
         self.content = content
 
@@ -624,7 +638,7 @@ class PhpDeclaration(PhpIdentifiedEntity):
 
 class PhpIdentifier(PhpEntity):
 
-    def __init__(self, name: str, parent_name: Optional[str] = None):
+    def __init__(self, name: bytes, parent_name: Optional[bytes] = None):
         super().__init__()
         self.name = name
         self.parent_name = parent_name
@@ -642,7 +656,8 @@ class PhpConstant(PhpIdentifiedEntity, Evaluable):
         try:
             return state.constants[self.name]
         except KeyError:
-            return self.name  # Constants are treated as strings if undefined
+            # Constants are treated as strings if undefined
+            return PhpValue.for_python_value(self.name)
 
 
 class PhpMagicConstant(PhpEntity, Evaluable):
@@ -658,11 +673,11 @@ class PhpMagicConstant(PhpEntity, Evaluable):
     def evaluate(self, state: PhpState) -> Any:
         if self.token_type == TokenType.DIR:
             return PhpValue.for_python_value(
-                    os.path.dirname(self.source_metadata.path)
+                    os.fsdecode(os.path.dirname(self.source_metadata.path))
                 )
         elif self.token_type == TokenType.FILE:
             return PhpValue.for_python_value(
-                    self.source_metadata.path
+                    os.fsdecode(self.source_metadata.path)
                 )
         else:
             raise EvaluationException('Unsupported magic constant')
@@ -680,10 +695,10 @@ class PhpInclude(PhpInstruction, Evaluable):
         self.required = required
         self.once = once
 
-    def evaluate_path(self, state: PhpState) -> str:
+    def evaluate_path(self, state: PhpState) -> bytes:
         path = self.path.evaluate(state)
-        if isinstance(path, str):
-            return path
+        if isinstance(path, bytes):
+            return os.fsencode(path)
         raise EvaluationException(
                 'Included path is not a string, received: {repr(path)}'
             )
@@ -713,7 +728,7 @@ class PhpFunctionReference(PhpIdentifiedEntity, PhpCallable):
 
 class PhpStaticMethodReference(PhpCallable):
 
-    def __init__(self, class_name: str, method_name: str):
+    def __init__(self, class_name: bytes, method_name: bytes):
         self.class_name = class_name
         self.method_name = method_name
 
@@ -732,7 +747,7 @@ class PhpMethodReference(PhpCallable):
 
     def __init__(
                 self,
-                method_name: str
+                method_name: bytes
             ):
         self.method_name = method_name
 
@@ -760,7 +775,7 @@ class PhpPropertyReference(PhpEntity, Evaluable):
 
     def __init__(
                 self,
-                property_name: str
+                property_name: bytes
             ):
         self.property_name = property_name
 
@@ -835,8 +850,8 @@ class PhpForeach(PhpInstruction):
                 self,
                 expression: PhpExpression,
                 instruction_group: PhpInstructionGroup,
-                value_name: str,
-                key_name: Optional[str]
+                value_name: bytes,
+                key_name: Optional[bytes]
             ):
         self.expression = expression
         self.instruction_group = instruction_group
@@ -982,7 +997,7 @@ class TokenStream:
     def require_equals(self) -> None:
         self.require_character(CharacterType.EQUALS)
 
-    def take_comments(self) -> List[str]:
+    def take_comments(self) -> List[bytes]:
         comments = self.pending_comments
         self.pending_comments = []
         return comments
@@ -1028,7 +1043,7 @@ class Parser:
     def parse_string(self, token: Token) -> PhpLiteral:
         if token.type != TokenType.CONSTANT_ENCAPSED_STRING:
             raise ParsingException('Token is not a valid string')
-        value = token.value[1:-1].replace(STRING_ESCAPE, '')
+        value = token.value[1:-1].replace(STRING_ESCAPE, b'')
         return PhpLiteral(PhpType.STRING, value)
 
     def parse_integer(self, token: Token) -> PhpLiteral:
@@ -1051,7 +1066,7 @@ class Parser:
         try:
             return OPERATOR_MAP[token.value]
         except KeyError:
-            raise ParsingException(f'Unrecognized operator: {token.value}')
+            raise ParsingException(f'Unrecognized operator: {token}')
 
     def parse_identifier(
                 self,
@@ -1192,8 +1207,7 @@ class Parser:
             return self.parse_operator(token)
         else:
             raise ParsingException(
-                    f'Unrecognized token in expression({token.type.name}):'
-                    f' {token.value}'
+                    f'Unrecognized token in expression: {token}'
                 )
 
     def parse_expression(
@@ -1233,7 +1247,7 @@ class Parser:
         expression_level -= 1
         return expression
 
-    def parse_variable_name(self, token: Token) -> str:
+    def parse_variable_name(self, token: Token) -> bytes:
         return token.value[1:]
 
     def parse_include(
@@ -1436,8 +1450,7 @@ class Parser:
                 break
             else:
                 raise ParsingException(
-                        f'Unexpected token in class definition({token.type}): '
-                        f'"{token.value}"'
+                        f'Unexpected token in class definition: {token}'
                     )
 
     def parse_class(
@@ -1574,8 +1587,10 @@ class Parser:
                     raise TagStateChanged(True)
                 else:
                     break
+            elif token.type is TokenType.CLOSE_TAG:
+                raise TagStateChanged(False)
             else:
-                raise ParsingException(f'Unexpected token: {token.type}')
+                raise ParsingException(f'Unexpected token: {token}')
         if content is not None:
             return PhpOutput(content)
         return None
@@ -1629,9 +1644,9 @@ class Parser:
         return context
 
 
-def parse_php_file(path: str) -> PhpContext:
+def parse_php_file(path: bytes) -> PhpContext:
     try:
-        with open(path, 'r') as stream:
+        with open(path, 'rb') as stream:
             metadata = SourceMetadata(path)
             source = Source(stream, metadata)
             parser = Parser(source)
